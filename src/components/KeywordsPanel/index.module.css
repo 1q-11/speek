@@ -1,0 +1,35 @@
+/* KeywordsPanel - Dbao风格 */
+
+.panel {
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--background, white);
+}
+
+.panelTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  margin: 0 0 10px 0;
+}
+
+.keywords {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kw {
+  color: var(--primary-color, #667eea);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 4px 10px;
+  background: rgba(102, 126, 234, 0.08);
+  border-radius: var(--radius-md, 8px);
+}
+
+.empty {
+  color: var(--text-hint, #999);
+  font-size: 13px;
+}
