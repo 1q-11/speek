@@ -3,8 +3,8 @@
 .transcriptWrap {
   position: relative;
   border: 1px solid var(--border-color, #e0e0e0);
-  border-radius: 16px;
-  padding: 14px 72px 14px 16px;
+  border-radius: clamp(10px, 2vw, 16px);
+  padding: clamp(10px, 1.8vw, 14px) clamp(50px, 8vw, 72px) clamp(10px, 1.8vw, 14px) clamp(10px, 2vw, 16px);
   background: var(--background, white);
   transition: border-color var(--transition-base, 0.3s ease);
 }
@@ -23,8 +23,9 @@
   background: transparent;
   color: var(--text-primary, #333);
   font: inherit;
+  font-size: clamp(13px, 1.8vw, 16px);
   line-height: 1.6;
-  min-height: 60px;
+  min-height: clamp(40px, 7vw, 60px);
 }
 
 .transcriptInput::placeholder {
@@ -38,10 +39,10 @@
 /* 麦克风按钮 (Dbao风格: 内嵌在右侧) */
 .mic {
   position: absolute;
-  right: 10px;
-  top: 14px;
-  width: 56px;
-  height: 56px;
+  right: clamp(6px, 1.2vw, 10px);
+  top: clamp(8px, 1.6vw, 14px);
+  width: clamp(40px, 6.5vw, 56px);
+  height: clamp(40px, 6.5vw, 56px);
   border-radius: var(--radius-full, 9999px);
   border: 2px solid var(--primary-color, #667eea);
   background: var(--primary-color, #667eea);
@@ -74,8 +75,8 @@
 }
 
 .micIcon {
-  width: 28px;
-  height: 28px;
+  width: clamp(20px, 3.2vw, 28px);
+  height: clamp(20px, 3.2vw, 28px);
 }
 
 /* Audio Wave (speek AI风格, 缩小版) */
@@ -83,12 +84,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  height: 28px;
+  gap: clamp(2px, 0.4vw, 3px);
+  height: clamp(20px, 3.2vw, 28px);
 }
 
 .bar {
-  width: 4px;
+  width: clamp(3px, 0.5vw, 4px);
   background: white;
   border-radius: 2px;
   animation-duration: 0.6s;
@@ -133,19 +134,19 @@
 /* Hint row */
 .hintRow {
   display: flex;
-  gap: 12px;
+  gap: clamp(6px, 1.4vw, 12px);
   justify-content: space-between;
   align-items: baseline;
-  margin-top: 8px;
+  margin-top: clamp(4px, 1vw, 8px);
 }
 
 .hintText {
-  font-size: 12px;
+  font-size: clamp(10px, 1.4vw, 12px);
   color: var(--text-hint, #999);
 }
 
 .timer {
-  font-size: 13px;
+  font-size: clamp(11px, 1.5vw, 13px);
   font-weight: 600;
   color: var(--error-color, #f44336);
   font-variant-numeric: tabular-nums;

@@ -105,15 +105,14 @@ body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 20px;
+  padding: clamp(12px, 3vw, 40px);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
-  width: 100%;
-  max-width: 860px;
+  width: min(92vw, 860px);
   margin: 0 auto;
 }
 
