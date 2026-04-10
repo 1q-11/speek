@@ -6,8 +6,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { AsrManager } from '../services/asr-manager'
 import { getVoiceController } from '../utils/controller'
 import { getSettingsManager } from '../utils/settings-manager'
-import { applyReplacements, loadReplacementMap } from '../utils/utils'
+import { loadReplacementMap } from '../utils/utils'
 import { logger } from '../utils/logger'
+import {
+  normalizeTranscript,
+  stripTranscriptPunctuation,
+} from '../utils/transcript-normalizer'
 import type {
   RecognitionStatus,
   ParseResult,
@@ -34,6 +38,7 @@ interface UseVoiceRecognitionReturn {
   switchEngine: (engine: AsrEngine) => Promise<void>
   rescanBackend: () => Promise<boolean>
   parseTranscript: (text: string) => void
+  syncSettings: () => void
 }
 
 export function useVoiceRecognition(): UseVoiceRecognitionReturn {
@@ -54,6 +59,24 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const replacementMapRef = useRef<Map<string, string>>(new Map())
 
+  const syncSettings = useCallback(() => {
+    const manager = asrManagerRef.current
+    if (!manager) return
+    const settings = getSettingsManager().getSettings()
+    manager.updateSettings(settings)
+    setRemainingSeconds(manager.getIsRecording() ? manager.getRemainingSeconds() : manager.getMaxSeconds())
+  }, [])
+
+  const normalizeAsrText = useCallback((text: string) => {
+    const settings = getSettingsManager().getSettings()
+    return normalizeTranscript(text, {
+      replacementMap: replacementMapRef.current,
+      enableCleanup: settings.enableTranscriptCleanup,
+      enableDomainHotwords: settings.enableDomainHotwords,
+      customFurniture: controllerRef.current.getCustomFurniture(),
+    })
+  }, [])
+
   // 初始化
   useEffect(() => {
     const settings = getSettingsManager().getSettings()
@@ -69,19 +92,25 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     // 创建ASR管理器
     const manager = new AsrManager({
       onRealtimeTranscript: (text, engine) => {
-        // 应用离线替换映射
-        const corrected = applyReplacements(text, replacementMapRef.current)
+        const corrected = normalizeAsrText(text)
         setInterimTranscript(corrected)
         // 实时文本也写入主文本（Dbao的UX：录音过程中就能看到）
         setTranscript(corrected)
       },
       onFinalTranscript: (text, alternatives, engine) => {
-        const corrected = applyReplacements(text, replacementMapRef.current)
+        const corrected = normalizeAsrText(text)
+        const normalizedAlternatives = alternatives.map((item) => ({
+          ...item,
+          transcript: stripTranscriptPunctuation(normalizeAsrText(item.transcript)),
+        }))
         setTranscript(corrected)
         setInterimTranscript('')
 
         // 使用控制器解析
-        const result = controllerRef.current.process(corrected, alternatives)
+        const result = controllerRef.current.process(
+          stripTranscriptPunctuation(corrected),
+          normalizedAlternatives,
+        )
         setParseResult(result)
         if (result.confidence > 0) {
           setConfidence(result.confidence)
@@ -102,6 +131,7 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     })
 
     asrManagerRef.current = manager
+    manager.updateSettings(settings)
 
     // 初始化ASR引擎
     manager.init(
@@ -118,7 +148,7 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       manager.destroy()
       if (countdownRef.current) clearInterval(countdownRef.current)
     }
-  }, [])
+  }, [normalizeAsrText])
 
   // 开始录音
   const startRecording = useCallback(async () => {
@@ -223,17 +253,19 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
 
   // 手动解析文本（来自Dbao: 编辑后重新解析）
   const parseTranscript = useCallback((text: string) => {
-    if (!text.trim()) {
+    const normalized = normalizeAsrText(text)
+    if (!normalized.trim()) {
       setParseResult(null)
       setConfidence(0)
       return
     }
-    const result = controllerRef.current.process(text)
+    setTranscript(normalized)
+    const result = controllerRef.current.process(stripTranscriptPunctuation(normalized))
     setParseResult(result)
     if (result.confidence > 0) {
       setConfidence(result.confidence)
     }
-  }, [])
+  }, [normalizeAsrText])
 
   return {
     isRecording,
@@ -254,5 +286,6 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
     switchEngine,
     rescanBackend,
     parseTranscript,
+    syncSettings,
   }
 }

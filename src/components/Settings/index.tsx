@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react'
 import { getVoiceController } from '../../utils/controller'
 import { getSettingsManager } from '../../utils/settings-manager'
+import { buildAudioConstraints } from '../../utils/audio'
 import type { AppSettings, SettingsTab, AsrEngine } from '../../types'
 import styles from './index.module.css'
 
@@ -25,6 +26,8 @@ interface SettingsProps {
   onSwitchEngine: (engine: AsrEngine) => Promise<void>
   /** 重新扫描后端回调 */
   onRescanBackend: () => Promise<boolean>
+  /** 同步运行时设置 */
+  onSettingsChange: () => void
 }
 
 export function Settings({
@@ -39,6 +42,7 @@ export function Settings({
   backendAvailable,
   onSwitchEngine,
   onRescanBackend,
+  onSettingsChange,
 }: SettingsProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
   const [settings, setSettings] = useState<AppSettings>(() =>
@@ -65,6 +69,7 @@ export function Settings({
   ) => {
     settingsManager.set(key, value)
     setSettings(settingsManager.getSettings())
+    onSettingsChange()
     onShowToast('设置已保存', 'success')
   }
 
@@ -72,7 +77,11 @@ export function Settings({
   const testMicrophone = async () => {
     onShowToast('正在测试麦克风...', 'info')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: buildAudioConstraints({
+          enableAudioEnhancement: settings.enableAudioEnhancement,
+        }),
+      })
       onShowToast('麦克风测试成功', 'success')
       stream.getTracks().forEach(track => track.stop())
     } catch (error) {
@@ -279,6 +288,122 @@ export function Settings({
                   }
                   className={styles.rangeInput}
                 />
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>音频增强</label>
+                  <p className={styles.settingDesc}>
+                    开启降噪、回声消除、自动增益和单声道采集
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableAudioEnhancement}
+                    onChange={(e) =>
+                      updateSetting('enableAudioEnhancement', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>静音自动停录</label>
+                  <p className={styles.settingDesc}>
+                    后端 Whisper 录音时，检测到持续静音后自动结束录音
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableAutoStopOnSilence}
+                    onChange={(e) =>
+                      updateSetting('enableAutoStopOnSilence', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>静音判定时长</label>
+                  <p className={styles.settingDesc}>
+                    持续静音达到该时长后自动停录 ({(settings.silenceDurationMs / 1000).toFixed(1)}秒)
+                  </p>
+                </div>
+                <input
+                  type="range"
+                  min="800"
+                  max="4000"
+                  step="200"
+                  value={settings.silenceDurationMs}
+                  disabled={!settings.enableAutoStopOnSilence}
+                  onChange={(e) =>
+                    updateSetting('silenceDurationMs', Number(e.target.value))
+                  }
+                  className={styles.rangeInput}
+                />
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>口语清洗</label>
+                  <p className={styles.settingDesc}>
+                    自动清理语气词、重复词和多余标点，提升短指令可解析性
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableTranscriptCleanup}
+                    onChange={(e) =>
+                      updateSetting('enableTranscriptCleanup', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>领域热词纠正</label>
+                  <p className={styles.settingDesc}>
+                    基于内置家具库和自定义家具，对同音或近音词做优先纠正
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableDomainHotwords}
+                    onChange={(e) =>
+                      updateSetting('enableDomainHotwords', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>混合双通道识别</label>
+                  <p className={styles.settingDesc}>
+                    后端 Whisper 录音时并行启用浏览器识别，优先显示更快的 interim，最终结果以后端为准
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableHybridAsr}
+                    onChange={(e) =>
+                      updateSetting('enableHybridAsr', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
               </div>
             </div>
 

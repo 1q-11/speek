@@ -137,6 +137,12 @@ export interface AppSettings {
   enableF9Hotkey: boolean       // 来自Dbao
   autoExecuteAPI: boolean
   maxRecordingSeconds: number   // 来自Dbao: 自动停止秒数
+  enableAudioEnhancement: boolean
+  enableAutoStopOnSilence: boolean
+  silenceDurationMs: number
+  enableTranscriptCleanup: boolean
+  enableDomainHotwords: boolean
+  enableHybridAsr: boolean
 
   // ASR引擎
   preferredAsrEngine: AsrEngine

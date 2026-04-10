@@ -54,6 +54,12 @@ export const DEFAULT_SETTINGS = {
   enableF9Hotkey: true,
   autoExecuteAPI: true,
   maxRecordingSeconds: 15,
+  enableAudioEnhancement: true,
+  enableAutoStopOnSilence: true,
+  silenceDurationMs: 1800,
+  enableTranscriptCleanup: true,
+  enableDomainHotwords: true,
+  enableHybridAsr: true,
 
   // ASR引擎
   preferredAsrEngine: 'web-speech' as const,
@@ -96,4 +102,8 @@ export const ASR_CONFIG = {
   HEALTH_TIMEOUT: 2000,
   /** 端口扫描超时 (ms) */
   PORT_SCAN_TIMEOUT: 1500,
+  /** 端侧静音检测轮询间隔 (ms) */
+  SILENCE_CHECK_INTERVAL: 200,
+  /** 端侧静音检测阈值 (RMS) */
+  SILENCE_RMS_THRESHOLD: 0.018,
 }

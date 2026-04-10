@@ -7,10 +7,15 @@
 
 import { logger } from '../utils/logger'
 import { ASR_CONFIG } from '../utils/constants'
+import {
+  buildAudioConstraints,
+  createProcessedRecordingStream,
+  SilenceDetector,
+} from '../utils/audio'
 import { discoverBackend, resetDiscovery } from './api-discovery'
 import { BackendAsrSession } from './backend-asr'
 import { WebSpeechSession } from './web-speech-asr'
-import type { AsrEngine, RecognitionAlternative } from '../types'
+import type { AppSettings, AsrEngine, RecognitionAlternative } from '../types'
 
 export interface AsrManagerCallbacks {
   /** 实时文本更新 */
@@ -30,11 +35,15 @@ export class AsrManager {
   private webSpeechSession: WebSpeechSession | null = null
   private mediaRecorder: MediaRecorder | null = null
   private mediaStream: MediaStream | null = null
+  private rawMediaStream: MediaStream | null = null
+  private processedStreamCleanup: (() => void) | null = null
 
   private activeEngine: AsrEngine = 'web-speech'
   private backendAvailable = false
   private isRecording = false
   private callbacks: AsrManagerCallbacks
+  private settings: AppSettings | null = null
+  private silenceDetector = new SilenceDetector()
 
   // Dbao: 自动停止倒计时
   private autoStopTimer: ReturnType<typeof setTimeout> | null = null
@@ -42,6 +51,7 @@ export class AsrManager {
 
   // Dbao: 录音时间
   private recordingStartTime = 0
+  private pendingInterimTranscript = ''
 
   constructor(callbacks: AsrManagerCallbacks) {
     this.callbacks = callbacks
@@ -69,6 +79,14 @@ export class AsrManager {
     }
 
     logger.log(`ASR引擎: ${this.activeEngine} (后端${this.backendAvailable ? '可用' : '不可用'})`)
+  }
+
+  /**
+   * 更新运行时设置
+   */
+  updateSettings(settings: AppSettings): void {
+    this.settings = settings
+    this.maxSeconds = settings.maxRecordingSeconds
   }
 
   /**
@@ -129,7 +147,22 @@ export class AsrManager {
       throw new Error('浏览器不支持录音')
     }
 
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: buildAudioConstraints({
+        enableAudioEnhancement: this.settings?.enableAudioEnhancement ?? true,
+      }),
+    })
+
+    this.rawMediaStream = this.mediaStream
+    const processed = createProcessedRecordingStream(this.mediaStream, {
+      enableAudioEnhancement: this.settings?.enableAudioEnhancement ?? true,
+    })
+    this.mediaStream = processed.stream
+    this.processedStreamCleanup = processed.cleanup
+
+    this.startSilenceDetection()
+    this.startHybridWebSpeech()
+
     const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
       ? 'audio/webm;codecs=opus'
       : ''
@@ -172,6 +205,8 @@ export class AsrManager {
    * 后端ASR：停止（Dbao的非阻塞UX）
    */
   private async stopBackendRecording(): Promise<void> {
+    this.stopSilenceDetection()
+
     // 立即停止MediaRecorder
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       await new Promise<void>((resolve) => {
@@ -186,6 +221,16 @@ export class AsrManager {
       this.mediaStream = null
     }
 
+    if (this.rawMediaStream) {
+      this.rawMediaStream.getTracks().forEach((t) => t.stop())
+      this.rawMediaStream = null
+    }
+
+    this.processedStreamCleanup?.()
+    this.processedStreamCleanup = null
+
+    this.stopHybridWebSpeech()
+
     // 非阻塞：finalize在后台完成
     this.backendSession?.finalize()
 
@@ -196,6 +241,7 @@ export class AsrManager {
    * Web Speech API：开始
    */
   private startWebSpeechRecording(): void {
+    this.pendingInterimTranscript = ''
     this.webSpeechSession = new WebSpeechSession()
     this.webSpeechSession.onInterimTranscript = (text) => {
       this.callbacks.onRealtimeTranscript(text, 'web-speech')
@@ -215,9 +261,66 @@ export class AsrManager {
    * Web Speech API：停止
    */
   private stopWebSpeechRecording(): void {
+    this.stopSilenceDetection()
     this.webSpeechSession?.stop()
     this.webSpeechSession = null
+    this.pendingInterimTranscript = ''
     logger.log('Web Speech API 录音停止')
+  }
+
+  /**
+   * 后端录音时，使用浏览器原生识别提供更快的 interim 文本
+   */
+  private startHybridWebSpeech(): void {
+    if (!this.backendAvailable) return
+    if (!this.settings?.enableHybridAsr) return
+    if (!WebSpeechSession.isSupported()) return
+
+    this.pendingInterimTranscript = ''
+    this.webSpeechSession = new WebSpeechSession()
+    this.webSpeechSession.onInterimTranscript = (text) => {
+      this.pendingInterimTranscript = text
+      this.callbacks.onRealtimeTranscript(text, 'web-speech')
+    }
+    this.webSpeechSession.onFinalTranscript = (text) => {
+      // 后端模式下，浏览器原生结果仅用于加速 interim 展示，不抢最终结果。
+      this.pendingInterimTranscript = text
+      this.callbacks.onRealtimeTranscript(text, 'web-speech')
+    }
+    this.webSpeechSession.onError = () => {
+      logger.log('Hybrid Web Speech 不可用，继续使用后端ASR')
+    }
+    this.webSpeechSession.start()
+  }
+
+  private stopHybridWebSpeech(): void {
+    this.webSpeechSession?.stop()
+    this.webSpeechSession = null
+    this.pendingInterimTranscript = ''
+  }
+
+  /**
+   * 启动端侧静音检测
+   */
+  private startSilenceDetection(): void {
+    if (!this.mediaStream) return
+    if (!this.settings?.enableAutoStopOnSilence) return
+
+    void this.silenceDetector.start(this.mediaStream, {
+      silenceDurationMs: this.settings.silenceDurationMs,
+      onSilence: () => {
+        if (!this.isRecording) return
+        logger.log('检测到持续静音，自动停止录音')
+        void this.stopRecording()
+      },
+    })
+  }
+
+  /**
+   * 停止端侧静音检测
+   */
+  private stopSilenceDetection(): void {
+    this.silenceDetector.stop()
   }
 
   /**
@@ -305,6 +408,8 @@ export class AsrManager {
     if (this.isRecording) {
       this.stopRecording()
     }
+    this.stopSilenceDetection()
+    this.stopHybridWebSpeech()
     this.backendSession?.reset()
     this.backendSession = null
     this.webSpeechSession = null

@@ -7,7 +7,7 @@ import { KJL_FURNITURE_NAMES, KJL_FURNITURE_SET } from './kjl-furniture-db'
 import type { ContextInfo } from '../types'
 
 // 位置关系词（按长度降序排列，避免短词先匹配）
-const POSITION_RELATIONS = [
+export const POSITION_RELATIONS = [
   '旁边', '左边', '右边', '上面', '下面', '前面', '后面',
   '附近', '周围', '边上', '侧边', '顶上', '底下',
   '左侧', '右侧', '上方', '下方', '前方', '后方',
@@ -18,6 +18,12 @@ const POSITION_RELATIONS = [
 const PREPOSITIONS = [
   '在', '的', '放', '摆', '添加', '来', '个', '一', '一个',
 ]
+
+interface FurnitureMention {
+  name: string
+  index: number
+  end: number
+}
 
 export class ContextParser {
   /**
@@ -37,13 +43,25 @@ export class ContextParser {
 
     logger.log('位置关系:', positionMatch.relation, '位置:', positionMatch.index)
 
+    const mentions = this.findFurnitureMentions(text)
+    const beforeMentions = mentions.filter((item) => item.end <= positionMatch.index)
+    const afterMentions = mentions.filter(
+      (item) => item.index >= positionMatch.index + positionMatch.relation.length,
+    )
+
     // 2. 提取参考对象（位置词之前的家具）
     const beforePosition = text.substring(0, positionMatch.index)
-    const referenceObject = this.extractFurniture(beforePosition)
+    const referenceObject =
+      beforeMentions[beforeMentions.length - 1]?.name || this.extractFurniture(beforePosition)
 
     // 3. 提取主要对象（位置词之后的家具）
     const afterPosition = text.substring(positionMatch.index + positionMatch.relation.length)
-    const mainObject = this.extractFurniture(afterPosition)
+    const fallbackMainMention = beforeMentions.find((item) => item.name !== referenceObject)
+    const mainObject =
+      afterMentions[0]?.name ||
+      this.extractFurniture(afterPosition) ||
+      fallbackMainMention?.name ||
+      null
 
     logger.log('参考对象:', referenceObject)
     logger.log('主要对象:', mainObject)
@@ -78,6 +96,40 @@ export class ContextParser {
       }
     }
     return null
+  }
+
+  /**
+   * 提取句子里的家具提及，并尽量保留离位置词最近的对象
+   */
+  private findFurnitureMentions(text: string): FurnitureMention[] {
+    const mentions: FurnitureMention[] = []
+
+    for (const name of KJL_FURNITURE_NAMES) {
+      let fromIndex = 0
+      while (fromIndex < text.length) {
+        const index = text.indexOf(name, fromIndex)
+        if (index === -1) break
+
+        const candidate: FurnitureMention = {
+          name,
+          index,
+          end: index + name.length,
+        }
+
+        if (!mentions.some((item) => this.hasOverlap(item, candidate))) {
+          mentions.push(candidate)
+        }
+
+        fromIndex = index + name.length
+      }
+    }
+
+    mentions.sort((a, b) => a.index - b.index)
+    return mentions
+  }
+
+  private hasOverlap(a: FurnitureMention, b: FurnitureMention): boolean {
+    return a.index < b.end && b.index < a.end
   }
 
   /**

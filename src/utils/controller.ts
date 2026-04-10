@@ -66,7 +66,29 @@ export class VoiceController {
 
     // 2. 单个结果或没有候选，直接解析
     logger.log('直接解析')
-    return this.parseText(text)
+    const result = this.parseText(text)
+    const context = this.contextParser.parseContext(text)
+
+    if (context) {
+      result.context = context
+
+      if ((!result.model || result.confidence < 75) && context.mainObject) {
+        const contextResult = this.parser.parse(context.mainObject)
+        if (contextResult.model) {
+          result.model = contextResult.model
+          result.confidence = Math.max(result.confidence, contextResult.confidence)
+          result.matchType =
+            result.matchType === '无匹配'
+              ? `上下文${contextResult.matchType}`
+              : `${result.matchType}+上下文`
+          result.candidates = contextResult.candidates.length > 0
+            ? contextResult.candidates
+            : result.candidates
+        }
+      }
+    }
+
+    return result
   }
 
   /**

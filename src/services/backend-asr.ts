@@ -23,6 +23,8 @@ export class BackendAsrSession {
   private chunkSeq = 0
   private latestSeqQueued = 0
   private lastRealtimeTranscript = ''
+  private uploadMode: UploadMode = 'incremental'
+  private warnedIncrementalFallback = false
 
   /** 实时转写回调 */
   onRealtimeTranscript: ((text: string) => void) | null = null
@@ -40,18 +42,13 @@ export class BackendAsrSession {
     if (!chunk || chunk.size === 0) return
     this.chunks.push(chunk)
 
-    // 累计上传：拼成一个完整WebM
     this.chunkSeq += 1
     this.latestSeqQueued = this.chunkSeq
 
-    const cumulativeBlob = new Blob(this.chunks, {
-      type: this.chunks[0]?.type || 'audio/webm',
-    })
-
     const item: QueueItem = {
-      blob: cumulativeBlob,
+      blob: this.buildUploadBlob(chunk),
       attempt: 0,
-      cumulative: true,
+      cumulative: this.uploadMode === 'cumulative',
       seq: this.chunkSeq,
     }
 
@@ -76,13 +73,7 @@ export class BackendAsrSession {
       while (this.uploadQueue.length > 0) {
         const item = this.uploadQueue[0]
         try {
-          const form = new FormData()
-          form.append('chunk', item.blob, 'chunk.webm')
-          if (this.sessionId) form.append('sessionId', this.sessionId)
-          if (item.cumulative) form.append('cumulative', '1')
-
-          const resp = await apiFetch('/api/asr/chunk', { method: 'POST', body: form }, 120000)
-          const json = await readJsonSafe<AsrChunkResponse>(resp, { throwOnHttpError: true })
+          const json = await this.uploadChunk(item)
 
           if (json?.data?.sessionId) this.sessionId = json.data.sessionId
 
@@ -96,6 +87,11 @@ export class BackendAsrSession {
 
           this.uploadQueue.shift()
         } catch (e: any) {
+          if (this.shouldFallbackToCumulative(e, item)) {
+            this.enableCumulativeFallback(item)
+            continue
+          }
+
           item.attempt += 1
           if (item.attempt >= 3) {
             logger.warn('实时转写分片上传失败（已放弃）:', e?.message)
@@ -231,6 +227,8 @@ export class BackendAsrSession {
     this.chunkSeq = 0
     this.latestSeqQueued = 0
     this.lastRealtimeTranscript = ''
+    this.uploadMode = 'incremental'
+    this.warnedIncrementalFallback = false
   }
 
   /**
@@ -238,6 +236,57 @@ export class BackendAsrSession {
    */
   getSessionId(): string | null {
     return this.sessionId
+  }
+
+  private buildUploadBlob(latestChunk: Blob): Blob {
+    if (this.uploadMode === 'incremental') {
+      return latestChunk
+    }
+
+    return new Blob(this.chunks, {
+      type: this.chunks[0]?.type || latestChunk.type || 'audio/webm',
+    })
+  }
+
+  private async uploadChunk(item: QueueItem): Promise<AsrChunkResponse> {
+    const form = new FormData()
+    form.append('chunk', item.blob, 'chunk.webm')
+    if (this.sessionId) form.append('sessionId', this.sessionId)
+    form.append('seq', String(item.seq))
+    form.append('streamMode', this.uploadMode)
+    if (item.cumulative) {
+      form.append('cumulative', '1')
+    }
+
+    const resp = await apiFetch('/api/asr/chunk', { method: 'POST', body: form }, 120000)
+    return readJsonSafe<AsrChunkResponse>(resp, { throwOnHttpError: true })
+  }
+
+  private shouldFallbackToCumulative(error: any, item: QueueItem): boolean {
+    if (this.uploadMode !== 'incremental') return false
+    if (item.cumulative) return false
+
+    const message = String(error?.message || '').toLowerCase()
+    return (
+      message.includes('400') ||
+      message.includes('404') ||
+      message.includes('415') ||
+      message.includes('422') ||
+      message.includes('unsupported') ||
+      message.includes('nonjson')
+    )
+  }
+
+  private enableCumulativeFallback(item: QueueItem): void {
+    this.uploadMode = 'cumulative'
+    item.blob = this.buildUploadBlob(item.blob)
+    item.cumulative = true
+    item.attempt = 0
+
+    if (!this.warnedIncrementalFallback) {
+      this.warnedIncrementalFallback = true
+      logger.warn('后端不支持增量流式分片，已自动回退为累计上传模式')
+    }
   }
 }
 
@@ -247,3 +296,5 @@ interface QueueItem {
   cumulative: boolean
   seq: number
 }
+
+type UploadMode = 'incremental' | 'cumulative'

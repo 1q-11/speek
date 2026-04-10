@@ -40,6 +40,7 @@ function App() {
     switchEngine,
     rescanBackend,
     parseTranscript,
+    syncSettings,
   } = useVoiceRecognition()
 
   const { toast, showToast } = useToast()
@@ -289,6 +290,7 @@ function App() {
         backendAvailable={backendAvailable}
         onSwitchEngine={switchEngine}
         onRescanBackend={rescanBackend}
+        onSettingsChange={syncSettings}
       />
 
       {/* Add Furniture Modal */}

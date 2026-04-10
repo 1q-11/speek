@@ -5,20 +5,26 @@
 import { logger } from './logger'
 import type { RecognitionAlternative, ParseResult } from '../types'
 import { EnhancedParser } from './parser'
+import { ContextParser, POSITION_RELATIONS } from './context-parser'
 
 interface CandidateScore {
   alternative: RecognitionAlternative
   parseResult: ParseResult
   voiceConfidence: number
   parseConfidence: number
+  contextScore: number
+  spatialScore: number
+  completenessScore: number
   combinedScore: number
 }
 
 export class SmartSelector {
   private parser: EnhancedParser
+  private contextParser: ContextParser
 
   constructor() {
     this.parser = new EnhancedParser()
+    this.contextParser = new ContextParser()
     logger.log('SmartSelector 初始化完成')
   }
 
@@ -45,17 +51,41 @@ export class SmartSelector {
     // 计算每个候选的综合评分
     const scores: CandidateScore[] = alternatives.map(alt => {
       const parseResult = this.parser.parse(alt.transcript)
+      const context = this.contextParser.parseContext(alt.transcript)
+      const transcript = alt.transcript.trim()
       const voiceConfidence = alt.confidence
       const parseConfidence = parseResult.confidence / 100
+      const contextScore = context?.mainObject
+        ? Math.min(1, 0.45 + (context.referenceObject ? 0.3 : 0) + (context.position ? 0.25 : 0))
+        : 0
+      const hasSpatialLanguage = POSITION_RELATIONS.some((relation) => transcript.includes(relation))
+      const spatialScore = hasSpatialLanguage
+        ? context?.position && context.referenceObject && context.mainObject
+          ? 1
+          : context?.position && context.mainObject
+            ? 0.7
+            : 0.25
+        : 0.5
+      const completenessScore = this.getCompletenessScore(transcript, parseResult, context)
 
-      // 综合评分 = 语音置信度 x 0.4 + 解析置信度 x 0.6
-      const combinedScore = voiceConfidence * 0.4 + parseConfidence * 0.6
+      // 综合评分 = 语音置信度 + 解析置信度 + 上下文完整度 + 方位一致性 + 句式完整度
+      const combinedScore =
+        voiceConfidence * 0.25 +
+        parseConfidence * 0.35 +
+        contextScore * 0.18 +
+        spatialScore * 0.12 +
+        completenessScore * 0.1
+
+      parseResult.context = context ?? parseResult.context ?? null
 
       return {
         alternative: alt,
         parseResult,
         voiceConfidence,
         parseConfidence,
+        contextScore,
+        spatialScore,
+        completenessScore,
         combinedScore,
       }
     })
@@ -70,6 +100,9 @@ export class SmartSelector {
         `  ${index + 1}. "${score.alternative.transcript}"`,
         `| 语音: ${(score.voiceConfidence * 100).toFixed(1)}%`,
         `| 解析: ${(score.parseConfidence * 100).toFixed(1)}%`,
+        `| 上下文: ${(score.contextScore * 100).toFixed(1)}%`,
+        `| 方位: ${(score.spatialScore * 100).toFixed(1)}%`,
+        `| 完整: ${(score.completenessScore * 100).toFixed(1)}%`,
         `| 综合: ${(score.combinedScore * 100).toFixed(1)}%`,
         `| 结果: ${score.parseResult.model || '无'}`,
       )
@@ -104,5 +137,31 @@ export class SmartSelector {
    */
   setParser(parser: EnhancedParser) {
     this.parser = parser
+  }
+
+  private getCompletenessScore(
+    transcript: string,
+    parseResult: ParseResult,
+    context: ParseResult['context'],
+  ): number {
+    let score = parseResult.model ? 0.45 : 0
+
+    if (parseResult.action && parseResult.action !== 'place') {
+      score += 0.15
+    }
+
+    if (context?.referenceObject) {
+      score += 0.2
+    }
+
+    if (context?.position) {
+      score += 0.1
+    }
+
+    if (transcript.length >= 4) {
+      score += 0.1
+    }
+
+    return Math.min(1, score)
   }
 }
