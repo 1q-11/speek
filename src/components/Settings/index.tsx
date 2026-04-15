@@ -7,6 +7,10 @@ import { useState, useEffect } from 'react'
 import { getVoiceController } from '../../utils/controller'
 import { getSettingsManager } from '../../utils/settings-manager'
 import { buildAudioConstraints } from '../../utils/audio'
+import { DIALECT_REGION_PACKS } from '../../utils/dialect-lexicon'
+import { DIALECT_TEST_CORPUS } from '../../utils/dialect-test-corpus'
+import { normalizeTranscript, stripTranscriptPunctuation } from '../../utils/transcript-normalizer'
+import { loadReplacementMap } from '../../utils/utils'
 import type { AppSettings, SettingsTab, AsrEngine } from '../../types'
 import styles from './index.module.css'
 
@@ -49,6 +53,15 @@ export function Settings({
     getSettingsManager().getSettings()
   )
   const [isScanning, setIsScanning] = useState(false)
+  const [selectedDialectCategory, setSelectedDialectCategory] = useState(
+    DIALECT_TEST_CORPUS[0]?.category || ''
+  )
+  const [replacementMap, setReplacementMap] = useState<Map<string, string>>(new Map())
+  const [debugPanel, setDebugPanel] = useState<{
+    original: string
+    normalized: string
+    result: string
+  } | null>(null)
 
   const controller = getVoiceController()
   const settingsManager = getSettingsManager()
@@ -59,6 +72,10 @@ export function Settings({
       setSettings(settingsManager.getSettings())
     }
   }, [show])
+
+  useEffect(() => {
+    loadReplacementMap('/data/asr_replace_zh.txt').then(setReplacementMap)
+  }, [])
 
   if (!show) return null
 
@@ -72,6 +89,17 @@ export function Settings({
     onSettingsChange()
     onShowToast('设置已保存', 'success')
   }
+
+  const toggleDialectRegion = (regionId: string, checked: boolean) => {
+    const next = checked
+      ? Array.from(new Set([...settings.enabledDialectRegions, regionId]))
+      : settings.enabledDialectRegions.filter((item) => item !== regionId)
+
+    updateSetting('enabledDialectRegions', next)
+  }
+
+  const selectedDialectSamples =
+    DIALECT_TEST_CORPUS.find((item) => item.category === selectedDialectCategory)?.samples || []
 
   // 测试麦克风
   const testMicrophone = async () => {
@@ -93,7 +121,26 @@ export function Settings({
   // 测试语音识别
   const testVoice = (text: string) => {
     try {
-      const result = controller.process(text, undefined)
+      const normalized = normalizeTranscript(text, {
+        replacementMap,
+        enableCleanup: settings.enableTranscriptCleanup,
+        enableDomainHotwords: settings.enableDomainHotwords,
+        enableDialectNormalization: settings.enableDialectNormalization,
+        enabledDialectRegions: settings.enabledDialectRegions,
+        customDialectMappings: settings.customDialectMappings,
+        customFurniture: controller.getCustomFurniture(),
+      })
+      const result = controller.process(stripTranscriptPunctuation(normalized), undefined)
+
+      if (settings.showDialectVisualizationPanel) {
+        setDebugPanel({
+          original: text,
+          normalized,
+          result: JSON.stringify(result, null, 2),
+        })
+      } else {
+        setDebugPanel(null)
+      }
 
       if (result && result.model) {
         const confidence = result.confidence
@@ -385,6 +432,83 @@ export function Settings({
                   />
                   <span className={styles.slider}></span>
                 </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>方言语言强化</label>
+                  <p className={styles.settingDesc}>
+                    将常见方言动作词、方位词、家具叫法归一成标准中文，提升方言转文字后的可解析性
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableDialectNormalization}
+                    onChange={(e) =>
+                      updateSetting('enableDialectNormalization', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>方言三段可视化面板</label>
+                  <p className={styles.settingDesc}>
+                    在测试页显示归一化前、归一化后和最终解析结果，便于定位方言识别问题
+                  </p>
+                </div>
+                <label className={styles.switch}>
+                  <input
+                    type="checkbox"
+                    checked={settings.showDialectVisualizationPanel}
+                    onChange={(e) =>
+                      updateSetting('showDialectVisualizationPanel', e.target.checked)
+                    }
+                  />
+                  <span className={styles.slider}></span>
+                </label>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>方言地区包</label>
+                  <p className={styles.settingDesc}>
+                    选择需要强化的地区口语，通用口语包始终开启
+                  </p>
+                </div>
+                <div className={styles.checkboxGroup}>
+                  {DIALECT_REGION_PACKS.filter((item) => item.id !== 'common').map((pack) => (
+                    <label key={pack.id} className={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={settings.enabledDialectRegions.includes(pack.id)}
+                        disabled={!settings.enableDialectNormalization}
+                        onChange={(e) => toggleDialectRegion(pack.id, e.target.checked)}
+                      />
+                      <span>{pack.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>自定义方言映射</label>
+                  <p className={styles.settingDesc}>
+                    每行一条，格式如 `搞快点=快一点` 或 `床边桌=床头柜`
+                  </p>
+                </div>
+                <textarea
+                  className={styles.textareaInput}
+                  rows={5}
+                  value={settings.customDialectMappings}
+                  placeholder={'搞快点=快一点\n床边桌=床头柜'}
+                  disabled={!settings.enableDialectNormalization}
+                  onChange={(e) => updateSetting('customDialectMappings', e.target.value)}
+                />
               </div>
 
               <div className={styles.settingItem}>
@@ -699,6 +823,59 @@ export function Settings({
                 </button>
               </div>
               <p className={styles.testDesc}>测试语音识别和同音字纠正功能</p>
+            </div>
+
+            <div className={styles.section}>
+              <h3>全场景方言测试</h3>
+              <div className={styles.settingItem}>
+                <div className={styles.settingInfo}>
+                  <label className={styles.settingLabel}>测试场景</label>
+                  <p className={styles.settingDesc}>
+                    覆盖家居、日常、导航、办公、购物、餐饮、聊天、设备控制等方言样例
+                  </p>
+                </div>
+                <select
+                  className={styles.selectInput}
+                  value={selectedDialectCategory}
+                  onChange={(e) => setSelectedDialectCategory(e.target.value)}
+                >
+                  {DIALECT_TEST_CORPUS.map((item) => (
+                    <option key={item.category} value={item.category}>
+                      {item.category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.testButtons}>
+                {selectedDialectSamples.map((sample) => (
+                  <button
+                    key={sample}
+                    className={styles.testBtn}
+                    onClick={() => testVoice(sample)}
+                  >
+                    {sample}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.testDesc}>一键验证不同方言场景下的归一化和解析表现</p>
+
+              {settings.showDialectVisualizationPanel && debugPanel && (
+                <div className={styles.debugPanel}>
+                  <div className={styles.debugBlock}>
+                    <div className={styles.debugTitle}>归一化前</div>
+                    <pre className={styles.debugContent}>{debugPanel.original}</pre>
+                  </div>
+                  <div className={styles.debugBlock}>
+                    <div className={styles.debugTitle}>归一化后</div>
+                    <pre className={styles.debugContent}>{debugPanel.normalized}</pre>
+                  </div>
+                  <div className={styles.debugBlock}>
+                    <div className={styles.debugTitle}>解析结果</div>
+                    <pre className={styles.debugContent}>{debugPanel.result}</pre>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

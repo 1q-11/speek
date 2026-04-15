@@ -73,9 +73,19 @@ export function useVoiceRecognition(): UseVoiceRecognitionReturn {
       replacementMap: replacementMapRef.current,
       enableCleanup: settings.enableTranscriptCleanup,
       enableDomainHotwords: settings.enableDomainHotwords,
+      enableDialectNormalization: settings.enableDialectNormalization,
+      enabledDialectRegions: settings.enabledDialectRegions,
+      customDialectMappings: settings.customDialectMappings,
       customFurniture: controllerRef.current.getCustomFurniture(),
     })
   }, [])
+
+  const normalizeForDebug = useCallback((text: string) => {
+    return {
+      original: text,
+      normalized: normalizeAsrText(text),
+    }
+  }, [normalizeAsrText])
 
   // 初始化
   useEffect(() => {

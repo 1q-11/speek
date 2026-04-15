@@ -8,10 +8,10 @@ import type { ActionCommands } from '../types'
  * 操作指令映射
  */
 export const ACTION_COMMANDS: ActionCommands = {
-  place: ['放', '摆', '添加', '来', '弄', '搞', '加', '增加', '布置'],
-  delete: ['删', '删除', '移除', '拿走', '去掉', '清除'],
-  rotate: ['旋转', '转一下', '转向', '转个方向', '换个方向'],
-  move: ['移动', '挪', '挪动', '移', '搬'],
+  place: ['放', '摆', '添加', '来', '弄', '搞', '加', '增加', '布置', '摆到', '摆在', '整个', '弄个', '搞个'],
+  delete: ['删', '删除', '移除', '拿走', '去掉', '清除', '搞脱', '删脱', '拿脱', '拿开'],
+  rotate: ['旋转', '转一下', '转向', '转个方向', '换个方向', '转哈', '转个向'],
+  move: ['移动', '挪', '挪动', '移', '搬', '挪哈', '移哈', '摆过去', '摆过来'],
   scale: ['缩放', '放大', '缩小', '调整大小'],
   clear: ['清空', '全部删除', '删掉所有', '清除所有'],
 }
@@ -60,6 +60,10 @@ export const DEFAULT_SETTINGS = {
   enableTranscriptCleanup: true,
   enableDomainHotwords: true,
   enableHybridAsr: true,
+  enableDialectNormalization: true,
+  enabledDialectRegions: ['southwest', 'hunan-hubei', 'cantonese'],
+  customDialectMappings: '',
+  showDialectVisualizationPanel: true,
 
   // ASR引擎
   preferredAsrEngine: 'web-speech' as const,

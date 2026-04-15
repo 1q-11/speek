@@ -6,6 +6,7 @@ import { logger } from './logger'
 import type { RecognitionAlternative, ParseResult } from '../types'
 import { EnhancedParser } from './parser'
 import { ContextParser, POSITION_RELATIONS } from './context-parser'
+import { getDialectSignalScore } from './dialect-phonetic-corrections'
 
 interface CandidateScore {
   alternative: RecognitionAlternative
@@ -15,6 +16,7 @@ interface CandidateScore {
   contextScore: number
   spatialScore: number
   completenessScore: number
+  dialectScore: number
   combinedScore: number
 }
 
@@ -55,6 +57,7 @@ export class SmartSelector {
       const transcript = alt.transcript.trim()
       const voiceConfidence = alt.confidence
       const parseConfidence = parseResult.confidence / 100
+      const dialectScore = getDialectSignalScore(transcript)
       const contextScore = context?.mainObject
         ? Math.min(1, 0.45 + (context.referenceObject ? 0.3 : 0) + (context.position ? 0.25 : 0))
         : 0
@@ -70,11 +73,12 @@ export class SmartSelector {
 
       // 综合评分 = 语音置信度 + 解析置信度 + 上下文完整度 + 方位一致性 + 句式完整度
       const combinedScore =
-        voiceConfidence * 0.25 +
-        parseConfidence * 0.35 +
-        contextScore * 0.18 +
-        spatialScore * 0.12 +
-        completenessScore * 0.1
+        voiceConfidence * 0.22 +
+        parseConfidence * 0.33 +
+        contextScore * 0.17 +
+        spatialScore * 0.11 +
+        completenessScore * 0.09 +
+        dialectScore * 0.08
 
       parseResult.context = context ?? parseResult.context ?? null
 
@@ -86,6 +90,7 @@ export class SmartSelector {
         contextScore,
         spatialScore,
         completenessScore,
+        dialectScore,
         combinedScore,
       }
     })
@@ -103,6 +108,7 @@ export class SmartSelector {
         `| 上下文: ${(score.contextScore * 100).toFixed(1)}%`,
         `| 方位: ${(score.spatialScore * 100).toFixed(1)}%`,
         `| 完整: ${(score.completenessScore * 100).toFixed(1)}%`,
+        `| 方言: ${(score.dialectScore * 100).toFixed(1)}%`,
         `| 综合: ${(score.combinedScore * 100).toFixed(1)}%`,
         `| 结果: ${score.parseResult.model || '无'}`,
       )

@@ -247,6 +247,57 @@
   color: var(--text-hint, #999);
 }
 
+.selectInput {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  background: var(--background, white);
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.checkboxGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+}
+
+.textareaInput {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  background: var(--background, white);
+  width: 240px;
+  resize: vertical;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  line-height: 1.5;
+}
+
+.textareaInput:focus {
+  outline: none;
+  border-color: var(--primary-color, #667eea);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.textareaInput:disabled {
+  opacity: 0.6;
+}
+
 /* 主题选择器 */
 .themeSelector {
   display: flex;
@@ -521,6 +572,38 @@
 
 .testButtons .testBtn {
   margin-bottom: 0;
+}
+
+.debugPanel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.debugBlock {
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 10px;
+  background: var(--background-secondary, #f9f9f9);
+  overflow: hidden;
+}
+
+.debugTitle {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.debugContent {
+  margin: 0;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary, #666);
 }
 
 /* 底部按钮 */

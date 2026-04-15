@@ -143,6 +143,10 @@ export interface AppSettings {
   enableTranscriptCleanup: boolean
   enableDomainHotwords: boolean
   enableHybridAsr: boolean
+  enableDialectNormalization: boolean
+  enabledDialectRegions: string[]
+  customDialectMappings: string
+  showDialectVisualizationPanel: boolean
 
   // ASR引擎
   preferredAsrEngine: AsrEngine

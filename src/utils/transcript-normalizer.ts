@@ -5,6 +5,8 @@
 import type { FurnitureEntity } from '../types'
 import { KJL_FURNITURE_NAMES } from './kjl-furniture-db'
 import { getPinyin, pinyinMatch, similarityScore } from './utils'
+import { normalizeDialectText } from './dialect-normalizer'
+import { applyDialectPhoneticCorrections } from './dialect-phonetic-corrections'
 
 interface DomainTerm {
   raw: string
@@ -15,6 +17,9 @@ interface NormalizeTranscriptOptions {
   replacementMap: Map<string, string>
   enableCleanup: boolean
   enableDomainHotwords: boolean
+  enableDialectNormalization: boolean
+  enabledDialectRegions: string[]
+  customDialectMappings: string
   customFurniture: FurnitureEntity[]
 }
 
@@ -172,6 +177,14 @@ export function normalizeTranscript(
 
   for (const [from, to] of options.replacementMap) {
     normalized = normalized.replaceAll(from, to)
+  }
+
+  if (options.enableDialectNormalization) {
+    normalized = normalizeDialectText(normalized, {
+      enabledRegions: options.enabledDialectRegions,
+      customMappings: options.customDialectMappings,
+    })
+    normalized = applyDialectPhoneticCorrections(normalized)
   }
 
   if (options.enableCleanup) {
